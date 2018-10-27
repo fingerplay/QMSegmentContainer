@@ -116,7 +116,7 @@
 
 - (void)reloadData
 {
-    if (!_didLoadData || !self.delegate || ![self.delegate respondsToSelector:@selector(numberOfItemsInTopBar:)] || ![self.delegate respondsToSelector:@selector(topBar:titleForItemAtIndex:)] || ![self.delegate respondsToSelector:@selector(segmentContainer:contentForIndex:)]) {
+    if (!_didLoadData || !self.delegate || ![self.delegate respondsToSelector:@selector(numberOfItemsInTopBar:)] || ![self.delegate respondsToSelector:@selector(segmentContainer:contentForIndex:)]) {
         return;
     }
     

@@ -30,6 +30,7 @@ typedef NS_ENUM(NSInteger,QMSegmentMenuType){
  */
 - (NSInteger)numberOfItemsInTopBar:(UIView<QMSegmentTopBarProtocol> *)topBar;
 
+@optional
 /**
  *  返回控件在index项的标题
  *
@@ -40,7 +41,7 @@ typedef NS_ENUM(NSInteger,QMSegmentMenuType){
  */
 - (NSString *)topBar:(UIView<QMSegmentTopBarProtocol> *)segmentTopBar titleForItemAtIndex:(NSInteger)index;
 
-@optional
+
 
 /**
  *  获取当前菜单的类型

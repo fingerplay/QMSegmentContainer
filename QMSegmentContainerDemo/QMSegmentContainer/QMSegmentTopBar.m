@@ -139,7 +139,7 @@
 
 - (void)reloadData
 {
-    if (!self.delegate || ![self.delegate respondsToSelector:@selector(numberOfItemsInTopBar:)] || ![self.delegate respondsToSelector:@selector(topBar:titleForItemAtIndex:)]) {
+    if (!self.delegate || ![self.delegate respondsToSelector:@selector(numberOfItemsInTopBar:)]) {
         return;
     }
     
@@ -668,72 +668,77 @@
 //单条文字或图片
 - (UIButton *)itemButtonForIndex:(NSInteger)index
 {
-    if (self.delegate && index < self.itemCount && [self.delegate respondsToSelector:@selector(topBar:titleForItemAtIndex:)]) {
-        
-        UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
-        UIImageView *imageView = [[UIImageView alloc] init];
-        button.tag = itemView_start_tag + index;
-        NSString *contain = @"";
+    if (self.delegate && index < self.itemCount && ([self.delegate respondsToSelector:@selector(topBar:titleForItemAtIndex:)] || [self.delegate respondsToSelector:@selector(topBar:iconForItemAtIndex:)])) {
+        NSString *itemStr = @"";
         if ([self.delegate respondsToSelector:@selector(topBar:titleForItemAtIndex:)]) {
-            contain = [self.delegate topBar:self titleForItemAtIndex:index];
+            itemStr = [self.delegate topBar:self titleForItemAtIndex:index];
         }
         NSString *picUrl = @"";
         if ([self.delegate respondsToSelector:@selector(topBar:iconForItemAtIndex:)]) {
             picUrl = [self.delegate topBar:self iconForItemAtIndex:index];
         }
-        if ([picUrl isHTTPLink]) {
-            button.titleLabel.font = self.titleFont;
-            [button setTitle:contain forState:UIControlStateNormal];
-            [button setTitleColor:self.titleNormalColor forState:UIControlStateNormal];
-            [button setTitleColor:self.titleSelectedColor forState:UIControlStateSelected];
-            [button addTarget:self action:@selector(itemButtonsClicked:) forControlEvents:UIControlEventTouchUpInside];
-            [button sizeToFit];
-            button.frame = CGRectMake(0, 0, button.width + self.indicatorOffset, self.topBar.height);
-            
-            __weak typeof(self) wSelf = self;
-            [[SDWebImageDownloader sharedDownloader] downloadImageWithURL:[NSURL URLWithString:picUrl]
-                                                                  options:SDWebImageDownloaderUseNSURLCache
-                                                                 progress:nil
-                                                                completed:^(UIImage *image, NSData *data, NSError *error, BOOL finished) {
-                                                                    __strong typeof(wSelf) sSelf = wSelf;
-                                                                    if (finished && image) {
-                                                                        dispatch_async(dispatch_get_main_queue(), ^{
-                                                                            CGFloat imageWidth = (image.size.width/image.size.height) * sSelf.topBar.height;
-                                                                            imageView.image = image;
-                                                                            imageView.frame = CGRectMake(self.indicatorOffset/2, 0, imageWidth, sSelf.topBar.height);
-                                                                            [button addSubview:imageView];
-                                                                            [button addTarget:self action:@selector(itemButtonsClicked:) forControlEvents:UIControlEventTouchUpInside];
-                                                                            [button setTitle:@"" forState:UIControlStateNormal];
-                                                                            button.frame = CGRectMake(0, 0, imageView.width + self.indicatorOffset, sSelf.topBar.height);
-                                                                            
-                                                                            
-                                                                            if (self.averageSegmentation) {
-                                                                                [self reLayoutTopBarUseAverageMode];
-                                                                            } else {
-                                                                                [self reLayoutTopBar];
-                                                                            }
-                                                                            
-                                                                            [self reLayoutIndicatorView];
-                                                                        });
-                                                                    }
-                                                                    
-                                                                }];
-        }
-        else {
-            button.titleLabel.font = self.titleFont;
-            [button setTitle:contain forState:UIControlStateNormal];
-            [button setTitleColor:self.titleNormalColor forState:UIControlStateNormal];
-            [button setTitleColor:self.titleSelectedColor forState:UIControlStateSelected];
-            [button addTarget:self action:@selector(itemButtonsClicked:) forControlEvents:UIControlEventTouchUpInside];
-            [button sizeToFit];
-            button.frame = CGRectMake(0, 0, button.width + self.indicatorOffset, self.topBar.height);
-        }
         
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+        button.tag = itemView_start_tag + index;
+        
+        if (picUrl.length) {
+            if ([picUrl isHTTPLink]) {
+                __weak typeof(self) wSelf = self;
+                [[SDWebImageDownloader sharedDownloader] downloadImageWithURL:[NSURL URLWithString:picUrl]
+                                                                      options:SDWebImageDownloaderUseNSURLCache
+                                                                     progress:nil
+                                                                    completed:^(UIImage *image, NSData *data, NSError *error, BOOL finished) {
+                                                                        __strong typeof(wSelf) sSelf = wSelf;
+                                                                        if (finished && image) {
+                                                                            dispatch_async(dispatch_get_main_queue(), ^{
+                                                                                [sSelf setupImage:image onButton:button];
+                                                                            });
+                                                                        }
+                                                                    }];
+            }
+            else {
+                UIImage *image = [UIImage imageNamed:picUrl];
+                if (image) {
+                    [button setImage:image forState:UIControlStateNormal];
+                }
+                
+                [button addTarget:self action:@selector(itemButtonsClicked:) forControlEvents:UIControlEventTouchUpInside];
+                [button sizeToFit];
+                button.frame = CGRectMake(0, 0, button.width + self.indicatorOffset, self.topBar.height);
+            }
+        }else{
+            button.titleLabel.font = self.titleFont;
+            [button setTitle:itemStr forState:UIControlStateNormal];
+            [button setTitleColor:self.titleNormalColor forState:UIControlStateNormal];
+            [button setTitleColor:self.titleSelectedColor forState:UIControlStateSelected];
+            [button addTarget:self action:@selector(itemButtonsClicked:) forControlEvents:UIControlEventTouchUpInside];
+            [button sizeToFit];
+            button.frame = CGRectMake(0, 0, button.width + self.indicatorOffset, self.topBar.height);
+        }
         return button;
     }
     return nil;
 }
 
+- (void)setupImage:(UIImage*)image onButton:(UIButton*)button{
+    
+    UIImageView *imageView = [[UIImageView alloc] init];
+    CGFloat imageWidth = (image.size.width/image.size.height) * self.topBar.height;
+    imageView.image = image;
+    imageView.frame = CGRectMake(self.indicatorOffset/2, 0, imageWidth, self.topBar.height);
+    [button addSubview:imageView];
+    [button addTarget:self action:@selector(itemButtonsClicked:) forControlEvents:UIControlEventTouchUpInside];
+    [button setTitle:@"" forState:UIControlStateNormal];
+    button.frame = CGRectMake(0, 0, imageView.width + self.indicatorOffset, self.topBar.height);
+
+    if (self.averageSegmentation) {
+        [self reLayoutTopBarUseAverageMode];
+    } else {
+        [self reLayoutTopBar];
+    }
+    
+    [self reLayoutIndicatorView];
+}
 
 //单条文字或图片
 - (UIButton *)itemButtonForIndex:(NSInteger)index menu:(QMSegmentMenuModel*)menu
@@ -802,8 +807,8 @@
 
 - (BOOL)isCanShowImg
 {
-    //5个到10个可配置显示图片
-    if(self.itemCount >= 5 && self.itemCount <= 10 && self.isShowImg){
+    //10个以内可配置显示图片
+    if(self.itemCount <= 10 && self.isShowImg){
         return YES;
     }
     return NO;
@@ -815,7 +820,7 @@
         return [self.delegate topBarShouldPopMenuList:self];
     }
     //10个以上显示下拉箭头
-    if (self.itemCount > 15){
+    if (self.itemCount > 10){
         return YES;
     }
     return NO;

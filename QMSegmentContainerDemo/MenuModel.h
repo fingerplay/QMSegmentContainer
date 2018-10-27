@@ -10,6 +10,7 @@
 #import "MacroDefines.h"
 
 @interface MenuModel : NSObject
+@property (nonatomic, assign) NSInteger categoryId;
 @property (nonatomic, strong) NSString *menuTitle;
 
 @property (nonatomic, strong) NSString *bgColor;
