@@ -51,3 +51,6 @@
    
         -(void)segmentContainer:(QMSegmentContainer *)segmentContainer didSelectedItemAtIndex:(NSInteger)index; //默认赋值与点击切换时均触发
         -(void)segmentContainer:(QMSegmentContainer *)segmentContainer didClickedItemAtIndex:(NSInteger)index; //仅点击切换时触发
+        
+##依赖
+ SDWebImage （可以换成其他的库来实现图片管理）
