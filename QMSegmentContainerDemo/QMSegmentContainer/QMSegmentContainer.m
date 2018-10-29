@@ -30,7 +30,9 @@
 @property (nonatomic, assign) NSInteger topItemCount;
 @property (nonatomic, assign) NSInteger orignContentCount;
 @property (nonatomic, assign) NSInteger contentItemCount;
-@property (nonatomic, strong) NSMutableDictionary *contentsDic;//存储内容文件
+@property (nonatomic, strong, readwrite) NSMutableDictionary *contentsDic;//存储内容文件
+@property (nonatomic, strong) NSMutableArray *appearingViewControllers;//处于appearing状态的contents
+@property (nonatomic, strong) NSMutableDictionary *pageStartTimeDictionary;
 /**
  *  只要包含纯文本形式则显示下划线
  */
@@ -45,7 +47,7 @@
 @implementation QMSegmentContainer
 
 -(void)dealloc{
-
+    [_pageStartTimeDictionary removeAllObjects];
 }
 
 - (id)initWithFrame:(CGRect)frame
@@ -59,7 +61,8 @@
         
         _lastIndex = -1;
         _shouldScrollAnimate = YES;
-        
+        _pageStartTimeDictionary = [[NSMutableDictionary alloc] init];
+        _isTopBarOnWindow = YES;
         self.autoresizingMask = UIViewAutoresizingFlexibleHeight | UIViewAutoresizingFlexibleWidth;
         self.backgroundColor = [UIColor whiteColor];
         [self addSubview:self.segmentTopBar];
@@ -90,12 +93,30 @@
         }
         
     }else {
-        self.segmentTopBar.frame = CGRectMake(0, 0, self.width, self.topBarHeight);
         self.containerView.frame = CGRectMake(0, self.segmentTopBar.bottom, self.width, self.height - self.segmentTopBar.height);
-     
+        self.segmentTopBar.frame = CGRectMake(0, 0, self.width, self.topBarHeight);
     }
     
     self.containerView.contentSize = CGSizeMake(self.containerView.contentSize.width, self.containerView.height);
+    
+    
+    id otherView = [self.contentsDic objectForKey:[self savedKeyForContentAtIndex:self.currentIndex]];
+    UIView *view;
+    if ([otherView isKindOfClass:[UIView class]]) {
+        view = otherView;
+    }else if ([otherView isKindOfClass:[UIViewController class]]){
+        view = [(UIViewController *)otherView view];
+    }
+    if ([UIDevice currentDevice].orientation == UIDeviceOrientationLandscapeLeft
+        || [UIDevice currentDevice].orientation == UIDeviceOrientationLandscapeRight) {
+        view.frame = CGRectMake(0, 0, self.containerView.width, self.containerView.height);
+        CGPoint containOffset = CGPointMake(0, 0);
+        self.containerView.contentOffset = containOffset;
+    }else {
+        view.frame = CGRectMake(self.currentIndex*self.containerView.width, 0, self.containerView.width, self.containerView.height);
+        CGPoint containOffset = CGPointMake(self.currentIndex*self.containerView.width, 0);
+        self.containerView.contentOffset = containOffset;
+    }
 }
 
 
@@ -148,7 +169,8 @@
     self.segmentTopBar.delegate = self.delegate;
     self.segmentTopBar.topBarHeight = @(self.topBarHeight);
     [self.segmentTopBar reloadData];
-    [self reloadContainerView];
+//    [self reloadContainerView];
+    [self reloadContainerViewWithOutContentAtIndex:0];
 
     //defaultIndex只在选中的是非第一个选项并且currentIndex小于1的情况下生效
     NSInteger delta = 0;
@@ -169,6 +191,8 @@
 
 - (void)reloadContainerView
 {
+    [self.appearingViewControllers removeAllObjects];
+    
     for (UIView *subView in self.containerView.subviews) {
         [subView removeFromSuperview];
     }
@@ -177,7 +201,60 @@
             [child removeFromParentViewController];
         }
     }
+    
     [self.contentsDic removeAllObjects];
+    if (self.isBottomBar) {
+        self.containerView.frame = CGRectMake(0, 0, self.width, self.height - self.segmentTopBar.height);
+    }else{
+        self.containerView.frame = CGRectMake(0, self.segmentTopBar.bottom, self.width, self.height - self.segmentTopBar.height);
+    }
+    self.containerView.contentSize = CGSizeMake(self.contentItemCount * self.containerView.width, self.containerView.height);
+    
+}
+
+- (void)reloadContainerViewWithOutContentAtIndex:(NSInteger)index
+{
+//    [self.appearingViewControllers removeAllObjects];
+    id remainContent = [self contentAtIndex:index];
+    
+    for (NSInteger i=0; i<self.appearingViewControllers.count; i++) {
+        UIViewController *vc = [self.appearingViewControllers objectAtIndex:i];
+        if (vc != remainContent) {
+            i --;// index 恢复 防止跳过下一个数据。
+            [self.appearingViewControllers removeObject:vc];
+        }
+    }
+    
+    NSArray *subviews = self.containerView.subviews;
+    for (NSInteger i=0; i<subviews.count; i++) {
+        UIView *view = [subviews objectAtIndex:i];
+        if (view.left/self.containerView.width != index) {
+            NSLog(@"remove subview:%@ atindex:%ld",view,i);
+            [view removeFromSuperview];
+        }
+    }
+    
+
+    if (self.parentVC) {
+        for (NSInteger i=0; i<self.parentVC.childViewControllers.count;i++) {
+            UIViewController *child = [self.parentVC.childViewControllers objectAtIndex:i];
+            if (child != remainContent) {
+                [child removeFromParentViewController];
+            }
+        }
+    }
+    
+    NSArray *keys = self.contentsDic.allKeys;
+    for (NSInteger i=0; i<keys.count; i++) {
+        NSString *key = [keys objectAtIndex:i];
+        id content = [self.contentsDic objectForKey:key];
+        if (content && content != remainContent) {
+            NSLog(@"remove content:%@ ",content);
+            [self.contentsDic removeObjectForKey:key];
+        }
+    }
+//    [self.contentsDic removeAllObjects];
+    
     if (self.isBottomBar) {
         self.containerView.frame = CGRectMake(0, 0, self.width, self.height - self.segmentTopBar.height);
     }else{
@@ -209,12 +286,17 @@
 - (void)scrollToItemAtIndex:(NSUInteger)index withAnimation:(BOOL)animation slide:(BOOL)slide isClick:(BOOL)isClick
 {
     if (index >= self.contentItemCount) {
+        NSLog(@"切换的index[%ld]超出范围！ contentItemCount:%ld",index,self.contentItemCount);
         return;
     }
     id fromVC = [self contentAtIndex:self.currentIndex];
 
-    if ([fromVC isKindOfClass:[UIViewController class]]) {
-        [(UIViewController*)fromVC beginAppearanceTransition:NO animated:YES];
+    if ([fromVC isKindOfClass:[UIViewController class]] && [self.appearingViewControllers containsObject:fromVC]) {
+        [(UIViewController*)fromVC beginAppearanceTransition:NO animated:animation];
+    }
+    
+    if (fromVC && self.delegate && [self.delegate respondsToSelector:@selector(segmentContainer:willUnSelectedItemAtIndex:)]) {
+        [self.delegate segmentContainer:self willUnSelectedItemAtIndex:self.currentIndex];
     }
     
     [self activeIndex:index];
@@ -229,15 +311,10 @@
         [self.delegate segmentContainer:self didSelectedItemAtIndex:index];
     }
     
-//    if(isClick){
-//        if (self.delegate && [self.delegate respondsToSelector:@selector(segmentContainer:didClickedItemAtIndex:)]) {
-//            [self.delegate segmentContainer:self didClickedItemAtIndex:index];
-//        }
-//    }
     //这里如果提前把toVC取出来了，可能是为空的，导致beginAppearanceTransition和endAppearanceTransition不被调用，从而不配对。所以必须要在页面初始化以后再取toVC
     id toVC = [self contentAtIndex:index];
-    if (([toVC isKindOfClass:[UIViewController class]])) {
-        [(UIViewController*)toVC beginAppearanceTransition:YES animated:YES];
+    if (([toVC isKindOfClass:[UIViewController class]]) && ![self.appearingViewControllers containsObject:toVC]) {
+        [(UIViewController*)toVC beginAppearanceTransition:YES animated:animation];
     }
     
     if (animation && self.shouldScrollAnimate) {
@@ -248,27 +325,39 @@
         } completion:^(BOOL finished) {
             __strong typeof(wSelf) sSelf = self;
             [sSelf didScrollToItemAtIndex:(index % sSelf.orignContentCount) slide:slide click:isClick];
-            [sSelf.topBar scrollToItemAtIndex:index withAnimation:animation slide:slide canCallBack:NO];
+//            [sSelf.topBar scrollToItemAtIndex:index withAnimation:animation slide:slide canCallBack:NO];
            
-            if ([fromVC isKindOfClass:[UIViewController class]]) {
+            if ([fromVC isKindOfClass:[UIViewController class]] && [self.appearingViewControllers containsObject:fromVC]) {
                 [(UIViewController*)fromVC endAppearanceTransition];
+                [self.appearingViewControllers removeObject:fromVC];
             }
             
-            if (([toVC isKindOfClass:[UIViewController class]])) {
+            if (([toVC isKindOfClass:[UIViewController class]]) && ![self.appearingViewControllers containsObject:toVC]) {
                 [(UIViewController*)toVC endAppearanceTransition];
+                [self.appearingViewControllers addObject:toVC];
             }
         }];
     }
     else{
+        if ([fromVC isKindOfClass:[UIViewController class]] && [self.appearingViewControllers containsObject:fromVC]) {
+            [(UIViewController*)fromVC endAppearanceTransition];
+            [self.appearingViewControllers removeObject:fromVC];
+        }
+        
+        if (([toVC isKindOfClass:[UIViewController class]]) && ![self.appearingViewControllers containsObject:toVC]) {
+            [(UIViewController*)toVC endAppearanceTransition];
+            [self.appearingViewControllers addObject:toVC];
+        }
         [self.segmentTopBar scrollToItemAtIndex:index withAnimation:animation slide:slide canCallBack:NO];
         self.containerView.contentOffset = containOffset;
         [self didScrollToItemAtIndex:(index % self.orignContentCount) slide:slide click:isClick];
+ 
 
     }
 }
 
 - (void)didScrollToItemAtIndex:(NSUInteger)index slide:(BOOL)slide click:(BOOL)click{
-
+    
     if (slide) {
         if (self.delegate && [self.delegate respondsToSelector:@selector(segmentContainer:didSlideToItemAtindex:)]) {
             [self.delegate segmentContainer:self didSlideToItemAtindex:index];
@@ -308,65 +397,93 @@
 }
 
 - (void)addContentAtIndex:(NSInteger)index {
-    [self.segmentTopBar reloadData];
-    //往index前面添加
-    [self doAddContentAtIndex:index preDisplay:NO];
-    
-    if (self.isBottomBar) {
-        self.containerView.frame = CGRectMake(0, 0, self.width, self.height - self.segmentTopBar.height);
-    }else{
-        self.containerView.frame = CGRectMake(0, self.segmentTopBar.bottom, self.width, self.height - self.segmentTopBar.height);
-    }
-    self.containerView.contentSize = CGSizeMake((self.contentItemCount + 1) * self.containerView.width, self.containerView.height);
-    
+
+    NSLog(@"add begin: index:%ld content dic:%@",index,self.contentsDic);
     //如果添加的不是最后一个，需要移动它之后其他子视图的位置
     if (index>=0 && index < self.contentItemCount) {
-        for (NSUInteger i=index; i<self.contentItemCount; i++) {
+        for (NSInteger i=self.contentItemCount - 1; i>= index; i--) {
             id otherView = [self.contentsDic objectForKey:[self savedKeyForContentAtIndex:i]];
             [self resetContent:otherView atIndex:i+1 preDisplay:NO];
+            [self.contentsDic removeObjectForKey:[self savedKeyForContentAtIndex:i]];
+            NSLog(@"add index:%ld content dic:%@",i,self.contentsDic);
         }
     }
+    
+    //往index前面添加
+    [self doAddContentAtIndex:index preDisplay:NO];
     self.contentItemCount++ ;
+    NSLog(@"add contentItemCount:%ld",self.contentItemCount);
+    self.containerView.contentSize = CGSizeMake((self.contentItemCount) * self.containerView.width, self.containerView.height);
+    
+    [self.segmentTopBar reloadData];
+    
+    //如果添加的设备在当前选中的设备之前，则选中的设备需要往后顺移一位
+    if (index <= self.currentIndex) {
+        self.currentIndex ++ ;
+        [self scrollToItemAtIndex:self.currentIndex withAnimation:NO slide:NO isClick:NO];
+    }
+    
 }
 
 - (void)removeContentAtIndex:(NSInteger)index {
     if (index <0 ||index >= self.contentItemCount ) {
+        NSLog(@"remove failed contentItemCount:%ld",self.contentItemCount);
         return;
     }
     
-    [self.segmentTopBar reloadData];
-    
+    NSLog(@"remove content dic:%@ at index:%ld",self.contentsDic,index);
     id content = [self.contentsDic objectForKey:[self savedKeyForContentAtIndex:index]];
-    if (content) {
-        if ([content isKindOfClass:[UIView class]]) {
-            [content removeFromSuperview];
-        }else if ([content isKindOfClass:[UIViewController class]]){
-            UIViewController *vc = content;
-            [vc.view removeFromSuperview];
-            [vc willMoveToParentViewController:self.parentVC];
-            [vc removeFromParentViewController];
-            [vc didMoveToParentViewController:self.parentVC];
-        }
+
+    if ([content isKindOfClass:[UIView class]]) {
+        [content removeFromSuperview];
+    }else if ([content isKindOfClass:[UIViewController class]]){
+        UIViewController *vc = content;
+        [self.appearingViewControllers removeObject:content];
+        [vc.view removeFromSuperview];
+        [vc willMoveToParentViewController:self.parentVC];
+        [vc removeFromParentViewController];
+        [vc didMoveToParentViewController:self.parentVC];
     }
-    
-    [self.contentsDic removeObjectForKey:[self savedKeyForContentAtIndex:index]];
-    
-    if (self.isBottomBar) {
-        self.containerView.frame = CGRectMake(0, 0, self.width, self.height - self.segmentTopBar.height);
-    }else{
-        self.containerView.frame = CGRectMake(0, self.segmentTopBar.bottom, self.width, self.height - self.segmentTopBar.height);
-    }
+
     self.containerView.contentSize = CGSizeMake((self.contentItemCount - 1) * self.containerView.width, self.containerView.height);
-    
-    //如果删除的不是最后一个，需要移动它之后其他子视图的位置
+    [self.contentsDic removeObjectForKey:[self savedKeyForContentAtIndex:index]];
+    //如果删除的不是最后一个，需要它之后其他子视图的位置往前移动一位
     if (index>=0 && index < self.contentItemCount - 1) {
-        for (NSUInteger i=index+1; i<self.contentItemCount; i++) {
+        for (NSInteger i=index+1; i<self.contentItemCount; i++) {
             id otherView = [self.contentsDic objectForKey:[self savedKeyForContentAtIndex:i]];
-            [self resetContent:otherView atIndex:i preDisplay:NO];
+            
+            [self resetContent:otherView atIndex:i-1 preDisplay:NO];
+            
+            //把之前的删除，避免重复
+            [self.contentsDic removeObjectForKey:[self savedKeyForContentAtIndex:i]];
+            
+//            if ([otherView isKindOfClass:[UIView class]]) {
+//                [otherView setNeedsLayout];
+//            }else if ([otherView isKindOfClass:[UIViewController class]]){
+//                [((UIViewController*)otherView).view setNeedsLayout];
+//            }
+           
+            NSLog(@"remove index:%ld content dic:%@",i,self.contentsDic);
         }
     }
-    self.contentItemCount --;
-    self.currentIndex = index>0 ? index - 1 : 0;
+    
+
+    if (content) {
+        //删除最后一个品类
+        [self.contentsDic removeObjectForKey:[self savedKeyForContentAtIndex:self.contentItemCount-1]];
+        self.contentItemCount --;
+        NSLog(@"remove contentItemCount:%ld",self.contentItemCount);
+    }
+  
+    [self.segmentTopBar reloadData];
+//    self.currentIndex = index>0 ? index - 1 : 0;
+    if (index<=self.currentIndex) {
+        self.currentIndex --;
+        if (self.currentIndex<0) {
+            self.currentIndex = 0;
+        }
+        [self scrollToItemAtIndex:self.currentIndex withAnimation:NO slide:NO isClick:NO];
+    }
 }
 
 - (void)resetContent:(id)content atIndex:(NSUInteger)index preDisplay:(BOOL)isPreDisplay{
@@ -379,6 +496,10 @@
     if (view.left != index*self.containerView.width) {
         view.frame = CGRectMake(index*self.containerView.width, 0, self.containerView.width, self.containerView.height);
     }
+    if (!view.superview) {
+        [self.containerView addSubview:view];
+    }
+    [self.contentsDic setObject:content forKey:[self savedKeyForContentAtIndex:index]];
 }
 
 - (id)doAddContentAtIndex:(NSUInteger)index preDisplay:(BOOL)isPreDisplay{
@@ -397,6 +518,7 @@
             
             vc.view.frame = CGRectMake(index*self.containerView.width, 0, self.containerView.width, self.containerView.height);
             [self.containerView addSubview:vc.view];
+            [self.appearingViewControllers addObject:vc];
             if (self.parentVC) {
                 [vc willMoveToParentViewController:self.parentVC];
                 [self.parentVC addChildViewController:vc];
@@ -445,6 +567,27 @@
     [self activeIndex:proposeIndex];
     [self.containerView setContentOffset:CGPointMake(proposeIndex*self.width, 0) animated:true];
 //    [self scrollToItemAtIndex:proposeIndex withAnimation:true slide:true];
+}
+
+- (void)moveTopBarToWindow {
+    [self.topBar removeFromSuperview];
+    UIView *layoutContainerView = [[[self.superview viewController] navigationController] view];
+    [layoutContainerView addSubview:self.topBar];
+    [layoutContainerView bringSubviewToFront:self.topBar];
+    
+    if (self.isBottomBar) {
+        self.topBar.bottom = SCREEN_HEIGHT;
+    }
+    _isTopBarOnWindow = YES;
+}
+
+- (void)resetTopBarPosition {
+    [self.topBar removeFromSuperview];
+    [self addSubview:self.topBar];
+    if (self.isBottomBar) {
+        self.topBar.bottom = self.height;
+    }
+    _isTopBarOnWindow = NO;
 }
 
 - (void)setTopBarHidden:(BOOL)topBarHidden {
@@ -602,9 +745,9 @@
         _segmentTopBar.onlyOneShow = YES;
         __weak typeof(self) weakself = self;
         [_segmentTopBar setDidSeleteItemAtIndex:^(NSInteger index) {
-//            if (index != weakself.currentIndex) {
+            if (index != weakself.currentIndex) {
                 [weakself scrollToItemAtIndex:index withAnimation:YES slide:NO isClick:YES];
-//            }
+            }
             
         }];
     }
@@ -634,6 +777,13 @@
         _contentsDic = [[NSMutableDictionary alloc] init];
     }
     return _contentsDic;
+}
+
+- (NSMutableArray *)appearingViewControllers {
+    if (!_appearingViewControllers) {
+        _appearingViewControllers = [[NSMutableArray alloc] init];
+    }
+    return _appearingViewControllers;
 }
 
 - (void)setContainerBackgroundColor:(UIColor *)containerBackgroundColor

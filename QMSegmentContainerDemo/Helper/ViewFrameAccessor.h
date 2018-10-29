@@ -45,4 +45,7 @@
 @property (nonatomic, readonly) CGFloat middleX;
 @property (nonatomic, readonly) CGFloat middleY;
 
+
+- (UIViewController *)viewController;
+
 @end

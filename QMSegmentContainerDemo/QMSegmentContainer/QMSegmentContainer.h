@@ -42,6 +42,10 @@
 @property (nonatomic, assign) BOOL allowGesture;
 
 /**
+ *  内容文件
+ */
+@property (nonatomic, strong, readonly) NSMutableDictionary *contentsDic;
+/**
  *  是否显示副标题，默认为NO
  */
 //@property (nonatomic, assign) BOOL isShowSubTitle;
@@ -113,6 +117,11 @@
 - (void)reloadData;
 
 /**
+ *  除了指定index项外，重新加载其他所有页面
+ */
+- (void)reloadContainerViewWithOutContentAtIndex:(NSInteger)index;
+
+/**
  *  添加content到index签名，content内容从Delegate方法中根据index获取
  */
 - (void)addContentAtIndex:(NSInteger)index;
@@ -146,8 +155,6 @@
  */
 - (void)resetToDefaultIndex;
 
-
-- (void)reloadContainerView;
 @end
 
 
@@ -175,6 +182,8 @@
 - (BOOL)shouldRecycleContainer:(QMSegmentContainer *)segmentContainer;
 - (NSInteger)numberOfItemsInSegmentContainer:(QMSegmentContainer *)segmentContainer;
 
+
+
 /**
  *  该方法每次reloadData后只会调用一次，调用时间为第一次切换到第index、index-1或者index+1项时
  *
@@ -182,6 +191,16 @@
  *  @param index            项的序号
  */
 - (void)segmentContainer:(QMSegmentContainer *)segmentContainer preDisplayItemAtIndex:(NSInteger)index;
+
+
+
+/**
+ *  取消选中第index项时的回调,每次切换(不论是滑动还是点击切换都会调用)到第index项都会调用该方法
+ *
+ *  @param segmentContainer segmentContainer description
+ *  @param index            项的序号
+ */
+- (void)segmentContainer:(QMSegmentContainer *)segmentContainer willUnSelectedItemAtIndex:(NSInteger)index;
 
 /**
  *  选中第index项时的回调,每次切换(不论是滑动还是点击切换都会调用)到第index项都会调用该方法

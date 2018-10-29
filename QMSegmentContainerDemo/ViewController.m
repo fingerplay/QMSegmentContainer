@@ -133,7 +133,7 @@
 
 - (QMSegmentContainer *)categoryView {
     if (!_categoryView) {
-        _categoryView = [[QMSegmentContainer alloc] initWithFrame:CGRectMake(0, 20, self.view.bounds.size.width, self.view.bounds.size.height-20)];
+        _categoryView = [[QMSegmentContainer alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, self.view.bounds.size.height)];
         _categoryView.segmentTopBar.indicatorHeight = 0;
         _categoryView.isBottomBar = YES;
         _categoryView.delegate = self;
